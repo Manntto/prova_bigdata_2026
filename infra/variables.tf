@@ -27,3 +27,27 @@ variable "bucket_raw_nome" {
     error_message = "O nome do bucket S3 deve ter entre 3 e 63 caracteres."
   }
 }
+
+# Nome global único do Bucket_Gold (camada gold — construída pelo aluno).
+variable "bucket_gold_nome" {
+  description = "Nome global único do bucket S3 gold (saída Parquet particionado)."
+  type        = string
+
+  validation {
+    condition     = length(var.bucket_gold_nome) >= 3 && length(var.bucket_gold_nome) <= 63
+    error_message = "O nome do bucket S3 deve ter entre 3 e 63 caracteres."
+  }
+}
+
+# ARN da LabRole — referenciada pelo Glue Job (sem criar roles/policies próprias).
+variable "labrole_arn" {
+  description = "ARN da LabRole pré-provisionada pelo Learner Lab (usada pelo Glue Job)."
+  type        = string
+}
+
+# Tags de custo padronizadas aplicadas em todos os recursos (Req 10.3).
+variable "tags" {
+  description = "Tags de custo padronizadas (Projeto, Disciplina, Ambiente)."
+  type        = map(string)
+  default     = {}
+}

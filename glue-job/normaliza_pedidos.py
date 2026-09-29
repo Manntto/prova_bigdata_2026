@@ -39,9 +39,12 @@ Requirements: 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 6.7, 8.5
 """
 
 import sys
+import boto3
+from datetime import datetime
 
 from pyspark.context import SparkContext
 from pyspark.sql import DataFrame, SparkSession
+from pyspark.sql.functions import col
 
 # Imports específicos do Glue — disponíveis no runtime do AWS Glue.
 # No teste local eles não são usados (a lógica pura roda em SparkSession pura).
@@ -83,10 +86,45 @@ def normalizar(df_raw: DataFrame) -> dict[str, DataFrame]:
 
     Requirements: 6.1, 6.2, 6.7
     """
-    # TODO(aluno): implementar a normalização (fato + 2 dimensões) usando DataFrames/Spark SQL.
-    # TODO(aluno): aplicar a regra de tratamento de dados inválidos (Req 6.7).
-    # TODO(aluno): retornar {"fato_pedidos": ..., "dim_cliente": ..., "dim_produto": ...}.
-    raise NotImplementedError("TODO(aluno): implementar normalizar()")
+    # 1. Filtrar linhas inválidas do fato
+    df_valido = df_raw.filter(
+        col("pedido_id").isNotNull()
+        & col("cliente_id").isNotNull()
+        & col("produto_id").isNotNull()
+        & col("quantidade").isNotNull()
+        & (col("quantidade") > 0)
+    )
+
+    # 2. Montar fato_pedidos
+    fato_pedidos = df_valido.select(
+        "pedido_id",
+        col("data_pedido").cast("date").alias("data_pedido"),
+        "cliente_id",
+        "produto_id",
+        "preco_unitario",
+        "quantidade",
+        "valor_total",
+    )
+
+    # 3. Montar dim_cliente
+    dim_cliente = (
+        df_valido.select("cliente_id", "cliente_nome", "cliente_uf")
+        .dropDuplicates(["cliente_id"])
+        .fillna({"cliente_nome": "DESCONHECIDO", "cliente_uf": "DESCONHECIDO"})
+    )
+
+    # 4. Montar dim_produto
+    dim_produto = (
+        df_valido.select("produto_id", "produto_nome", "categoria")
+        .dropDuplicates(["produto_id"])
+        .fillna({"produto_nome": "DESCONHECIDO", "categoria": "DESCONHECIDO"})
+    )
+
+    return {
+        "fato_pedidos": fato_pedidos,
+        "dim_cliente": dim_cliente,
+        "dim_produto": dim_produto,
+    }
 
 
 def montar_metadados(execution_id, dataset, linhas_lidas, linhas_gravadas, status) -> dict:
@@ -108,9 +146,14 @@ def montar_metadados(execution_id, dataset, linhas_lidas, linhas_gravadas, statu
 
     Requirements: 6.5, 8.5
     """
-    # TODO(aluno): montar e retornar o dict de metadados com todos os campos preenchidos,
-    # TODO(aluno): incluindo data_hora em formato ISO-8601.
-    raise NotImplementedError("TODO(aluno): implementar montar_metadados()")
+    return {
+        "execution_id": execution_id,
+        "data_hora": datetime.utcnow().isoformat(),
+        "dataset": dataset,
+        "linhas_lidas": linhas_lidas,
+        "linhas_gravadas": linhas_gravadas,
+        "status": status,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -129,8 +172,12 @@ def ler_raw(spark: SparkSession, raw_path: str) -> DataFrame:
 
     Requirements: 6.3
     """
-    # TODO(aluno): ler o CSV do raw_path (header=True, inferSchema ou schema explícito).
-    raise NotImplementedError("TODO(aluno): implementar ler_raw()")
+    return (
+        spark.read
+        .option("header", True)
+        .option("inferSchema", True)
+        .csv(raw_path)
+    )
 
 
 def escrever_gold(tabelas: dict[str, DataFrame], gold_path: str) -> None:
@@ -148,10 +195,10 @@ def escrever_gold(tabelas: dict[str, DataFrame], gold_path: str) -> None:
 
     Requirements: 6.4, 6.6
     """
-    # TODO(aluno): gravar fato_pedidos em Parquet particionado por data_pedido.
-    # TODO(aluno): gravar dim_cliente e dim_produto em Parquet (sem partição).
-    raise NotImplementedError("TODO(aluno): implementar escrever_gold()")
-
+    base = gold_path.rstrip("/")
+    tabelas["fato_pedidos"].write.partitionBy("data_pedido").parquet(f"{base}/fato_pedidos")
+    tabelas["dim_cliente"].write.parquet(f"{base}/dim_cliente")
+    tabelas["dim_produto"].write.parquet(f"{base}/dim_produto")
 
 def gravar_metadados_dynamo(item: dict, ddb_table: str) -> None:
     """Grava o item de metadados da execução na tabela DynamoDB.
@@ -162,8 +209,9 @@ def gravar_metadados_dynamo(item: dict, ddb_table: str) -> None:
 
     Requirements: 6.5, 8.5
     """
-    # TODO(aluno): usar boto3 para gravar o item na tabela DynamoDB (put_item).
-    raise NotImplementedError("TODO(aluno): implementar gravar_metadados_dynamo()")
+    dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
+    tabela = dynamodb.Table(ddb_table)
+    tabela.put_item(Item=item)
 
 
 # ---------------------------------------------------------------------------
@@ -203,7 +251,6 @@ def main() -> None:
         # Passo 3 — Tratar nulos / linhas inválidas (Req 6.7).
         # A regra de descarte/DESCONHECIDO é aplicada dentro de normalizar() (função pura),
         # mantendo a lógica testável localmente.
-        # TODO(aluno): se preferir, tratar nulos aqui antes de normalizar.
 
         # Passo 4 — Normalizar em fato + dimensões.
         tabelas = normalizar(df_raw)
