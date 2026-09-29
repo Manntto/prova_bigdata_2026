@@ -82,5 +82,5 @@ Cada item indica o requisito correspondente da prova.
 - [x] **Branch no padrão `prova-1120245`** criada a partir do fork. — _Requisito 12.3_
 - [x] **Arquivos do aluno em `entregas/1120245/`** (pasta identificada pelo RA na raiz
   do repositório). — _Requisito 12.5_
-- [ ] **Pull Request aberta** para a `master` do repositório original, com os entregáveis e as
+- [x] **Pull Request aberta** para a `master` do repositório original, com os entregáveis e as
   evidências de execução (prints do `terraform apply` e das consultas Athena). — _Requisitos 12.1, 12.2_
